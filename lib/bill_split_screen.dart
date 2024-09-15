@@ -8,12 +8,12 @@ class BillSplitScreen extends StatefulWidget {
 }
 
 class _BillSplitScreenState extends State<BillSplitScreen> {
-  List<String> _friends = []; // List to hold friend names
-  List<String> _selectedFriends = []; // List of selected friends for splitting
-  Map<String, TextEditingController> _amountControllers = {}; // Map to hold TextEditingControllers for amounts
+  List<String> _friends = [];
+  List<String> _selectedFriends = [];
+  Map<String, TextEditingController> _amountControllers = {};
   double _totalBill = 0.0;
   Map<String, double> _balances = {};
-
+  bool _isLoading = true;
   @override
   void initState() {
     super.initState();
@@ -24,7 +24,6 @@ class _BillSplitScreenState extends State<BillSplitScreen> {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     if (currentUserId != null) {
       try {
-        // Fetch the user's friend list
         final DocumentSnapshot userSnapshot = await FirebaseFirestore.instance
             .collection('friends')
             .doc(currentUserId)
@@ -34,7 +33,6 @@ class _BillSplitScreenState extends State<BillSplitScreen> {
 
         final List<String> friendNames = [];
 
-        // Fetch friend details
         for (final friendId in friendIds) {
           final friendDoc = await FirebaseFirestore.instance.collection('users').doc(friendId).get();
           friendNames.add(friendDoc.data()?['username'] ?? 'No Username');
@@ -42,8 +40,8 @@ class _BillSplitScreenState extends State<BillSplitScreen> {
 
         setState(() {
           _friends = friendNames;
+          _isLoading = false;
         });
-
       } catch (e) {
         print('Failed to fetch friends: $e');
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error fetching friends')));
@@ -56,15 +54,17 @@ class _BillSplitScreenState extends State<BillSplitScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Bill Splitter'),
+        backgroundColor: Colors.teal,
       ),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Input for Total Bill
+              _buildHeaderText('Total Bill Amount'),
               TextField(
-                decoration: InputDecoration(labelText: 'Total Bill Amount'),
+                decoration: _inputDecoration('Enter total bill'),
                 keyboardType: TextInputType.number,
                 onChanged: (value) {
                   setState(() {
@@ -73,56 +73,81 @@ class _BillSplitScreenState extends State<BillSplitScreen> {
                 },
               ),
               SizedBox(height: 20),
-              Text('Select Friends to Split', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-
-              // Display a list of friends to select and input amount
-              _friends.isNotEmpty
+              _buildHeaderText('Select Friends to Split'),
+              SizedBox(height: 10),
+              _isLoading
+                  ? Center(child: CircularProgressIndicator()) // Show loading indicator while fetching data
+                  : _friends.isNotEmpty
                   ? Column(
-                      children: _friends.map((friend) {
-                        bool isSelected = _selectedFriends.contains(friend);
-                        return Column(
-                          children: [
-                            CheckboxListTile(
-                              title: Text(friend),
-                              value: isSelected,
-                              onChanged: (bool? value) {
-                                setState(() {
-                                  if (value == true) {
-                                    _selectedFriends.add(friend);
-                                    _amountControllers[friend] = TextEditingController();
-                                  } else {
-                                    _selectedFriends.remove(friend);
-                                    _amountControllers.remove(friend)?.dispose();
-                                  }
-                                });
-                              },
+                children: _friends.map((friend) {
+                  bool isSelected = _selectedFriends.contains(friend);
+                  return Card(
+                    elevation: 2,
+                    margin: const EdgeInsets.symmetric(vertical: 5),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      child: Column(
+                        children: [
+                          CheckboxListTile(
+                            title: Text(friend, style: TextStyle(fontSize: 16)),
+                            value: isSelected,
+                            onChanged: (bool? value) {
+                              setState(() {
+                                if (value == true) {
+                                  _selectedFriends.add(friend);
+                                  _amountControllers[friend] = TextEditingController();
+                                } else {
+                                  _selectedFriends.remove(friend);
+                                  _amountControllers.remove(friend)?.dispose();
+                                }
+                              });
+                            },
+                          ),
+                          if (isSelected)
+                            TextField(
+                              controller: _amountControllers[friend],
+                              decoration: _inputDecoration('Amount owed for $friend'),
+                              keyboardType: TextInputType.number,
                             ),
-                            if (isSelected)
-                              TextField(
-                                controller: _amountControllers[friend],
-                                decoration: InputDecoration(
-                                  labelText: 'Amount for $friend',
-                                ),
-                                keyboardType: TextInputType.number,
-                              ),
-                            SizedBox(height: 10),
-                          ],
-                        );
-                      }).toList(),
-                    )
-                  : Center(child: CircularProgressIndicator()),
-
+                          SizedBox(height: 10),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              )
+                  : Center(child: Text('No friends found', style: TextStyle(fontSize: 18, color: Colors.grey))), // Show this if no friends found
               SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _selectedFriends.isEmpty ? null : _splitBill,
-                child: Text('Split Bill'),
+              Center(
+                child: ElevatedButton(
+                  onPressed: _selectedFriends.isEmpty ? null : _splitBill,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                    textStyle: TextStyle(fontSize: 18),
+                  ),
+                  child: Text('Split Bill'),
+                ),
               ),
               SizedBox(height: 20),
-              _balances.isNotEmpty ? _buildBalancesView() : Container(),
+              if (_balances.isNotEmpty) _buildBalancesView(),
             ],
           ),
         ),
       ),
+    );
+  }
+  InputDecoration _inputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+    );
+  }
+
+  Widget _buildHeaderText(String text) {
+    return Text(
+      text,
+      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
     );
   }
 
@@ -134,27 +159,22 @@ class _BillSplitScreenState extends State<BillSplitScreen> {
       List<String> friendsWithoutAmount = [];
       double remainingAmount = _totalBill;
 
-      // Calculate amounts for friends with specified amounts
       for (String friend in _selectedFriends) {
         String? amountText = _amountControllers[friend]?.text;
         double amountOwed = double.tryParse(amountText ?? '') ?? 0.0;
 
         if (amountText != null && amountText.isNotEmpty) {
-          // Update total owed and reduce remaining amount
           amountsOwed[friend] = amountOwed;
           totalOwed += amountOwed;
           remainingAmount -= amountOwed;
         } else {
-          // Collect friends without specified amount
           friendsWithoutAmount.add(friend);
         }
       }
 
-      // Calculate split amount for friends without specified amounts
       if (friendsWithoutAmount.isNotEmpty) {
         double splitAmount = remainingAmount / friendsWithoutAmount.length;
 
-        // Create split requests for friends with specified amounts
         for (String friend in amountsOwed.keys) {
           try {
             await FirebaseFirestore.instance.collection('split_requests').add({
@@ -171,7 +191,6 @@ class _BillSplitScreenState extends State<BillSplitScreen> {
           }
         }
 
-        // Create split requests for friends without specified amounts
         for (String friend in friendsWithoutAmount) {
           try {
             await FirebaseFirestore.instance.collection('split_requests').add({
@@ -189,7 +208,6 @@ class _BillSplitScreenState extends State<BillSplitScreen> {
         }
       }
 
-      // Update balances
       Map<String, double> balances = {};
       for (String friend in _selectedFriends) {
         double amountOwed = amountsOwed[friend] ?? (remainingAmount / friendsWithoutAmount.length);
@@ -204,9 +222,9 @@ class _BillSplitScreenState extends State<BillSplitScreen> {
     }
   }
 
-  // Build a widget to show balances
   Widget _buildBalancesView() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: _balances.entries.map((entry) {
         String name = entry.key;
         double balance = entry.value;
@@ -214,7 +232,13 @@ class _BillSplitScreenState extends State<BillSplitScreen> {
             ? '$name should receive \$${balance.abs().toStringAsFixed(2)}'
             : '$name owes \$${balance.abs().toStringAsFixed(2)}';
 
-        return Text(balanceText, style: TextStyle(fontSize: 16));
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Text(
+            balanceText,
+            style: TextStyle(fontSize: 16, color: balance > 0 ? Colors.green : Colors.red),
+          ),
+        );
       }).toList(),
     );
   }

@@ -1,4 +1,4 @@
-// lib/login_page.dart
+// login_page.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'auth_service.dart';
@@ -19,9 +19,8 @@ class _LoginPageState extends State<LoginPage> {
     final password = _passwordController.text.trim();
     final user = await _authService.logInWithEmailPassword(email, password);
     if (user != null) {
-      // Successfully logged in
+      Navigator.pushReplacementNamed(context, '/home');
     } else {
-      // Show error message
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Failed to login.'),
       ));
@@ -33,19 +32,35 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Login'),
+        backgroundColor: Theme.of(context).primaryColor,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            Text(
+              'Login',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            SizedBox(height: 20),
             TextField(
               controller: _emailController,
-              decoration: InputDecoration(labelText: 'Email'),
+              decoration: InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.email),
+              ),
               keyboardType: TextInputType.emailAddress,
             ),
+            SizedBox(height: 16),
             TextField(
               controller: _passwordController,
-              decoration: InputDecoration(labelText: 'Password'),
+              decoration: InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.lock),
+              ),
               obscureText: true,
             ),
             SizedBox(height: 20),

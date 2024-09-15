@@ -1,7 +1,7 @@
-// lib/signup_page.dart
+// signup_page.dart
 import 'package:flutter/material.dart';
 import 'auth_service.dart';
-import 'home_page.dart'; // Import the HomePage
+import 'home_page.dart';
 import 'login_page.dart';
 
 class SignupPage extends StatefulWidget {
@@ -22,13 +22,11 @@ class _SignupPageState extends State<SignupPage> {
 
     final user = await _authService.signUpWithEmailPassword(email, password, username);
     if (user != null) {
-      // Navigate to HomePage if signup is successful
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => HomePage()),
       );
     } else {
-      // Show error message
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Failed to sign up.'),
       ));
@@ -40,24 +38,45 @@ class _SignupPageState extends State<SignupPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Sign Up'),
+        backgroundColor: Theme.of(context).primaryColor,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            Text(
+              'Sign Up',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            SizedBox(height: 20),
             TextField(
               controller: _emailController,
-              decoration: InputDecoration(labelText: 'Email'),
+              decoration: InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.email),
+              ),
               keyboardType: TextInputType.emailAddress,
             ),
+            SizedBox(height: 16),
             TextField(
               controller: _passwordController,
-              decoration: InputDecoration(labelText: 'Password'),
+              decoration: InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.lock),
+              ),
               obscureText: true,
             ),
+            SizedBox(height: 16),
             TextField(
               controller: _usernameController,
-              decoration: InputDecoration(labelText: 'Username'),
+              decoration: InputDecoration(
+                labelText: 'Username',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person),
+              ),
             ),
             SizedBox(height: 20),
             ElevatedButton(

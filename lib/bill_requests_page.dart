@@ -9,6 +9,7 @@ class SplitRequestsPage extends StatefulWidget {
 
 class _SplitRequestsPageState extends State<SplitRequestsPage> {
   List<DocumentSnapshot> _receivedRequests = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -26,15 +27,14 @@ class _SplitRequestsPageState extends State<SplitRequestsPage> {
             .get();
         final currentUsername = userSnapshot.data()?['username'];
 
-        // Fetch received requests (requests where the current user is the recipient)
         final receivedSnapshot = await FirebaseFirestore.instance
             .collection('split_requests')
             .where('to', isEqualTo: currentUsername)
             .get();
 
-
         setState(() {
           _receivedRequests = receivedSnapshot.docs;
+          _isLoading = false;
         });
       } catch (e) {
         print('Failed to fetch split requests: $e');
@@ -61,134 +61,134 @@ class _SplitRequestsPageState extends State<SplitRequestsPage> {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
       try {
-        await FirebaseFirestore.instance.collection('split_requests').doc(requestId).update({
+        final requestSnapshot = await FirebaseFirestore.instance
+            .collection('split_requests')
+            .doc(requestId)
+            .get();
+
+        // Check if the request document exists
+        if (!requestSnapshot.exists) {
+          print('Request not found');
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Request not found')));
+          return;
+        }
+
+        // Safely retrieve the amount from the request document
+        final amount = requestSnapshot.data()?['amount'] as double?;
+        if (amount == null) {
+          print('Amount is null or invalid');
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Invalid request data')));
+          return;
+        }
+
+        // Update the status of the request
+        await FirebaseFirestore.instance
+            .collection('split_requests')
+            .doc(requestId)
+            .update({
           'status': 'approved',
         });
-        setState(() {});
+
+
+        setState(() {}); // Refresh the UI
 
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Split request approved')));
-      } catch (e) {
+      } catch (e, stackTrace) {
         print('Failed to approve split request: $e');
+        print(stackTrace); // Print the stack trace for debugging
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to approve request')));
+            SnackBar(content: Text('Error approving split request')));
       }
     }
   }
 
-  // Future<void> _askForApproval(String requestId) async {
-  //   try {
-  //     await FirebaseFirestore.instance.collection('split_requests').doc(requestId).update({
-  //       'approvalRequested': true,
-  //     });
+  Future<void> _rejectRequest(String requestId) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('split_requests')
+            .doc(requestId)
+            .update({
+          'status': 'rejected',
+        });
 
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(content: Text('Asked for approval')));
-  //   } catch (e) {
-  //     print('Failed to ask for approval: $e');
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(content: Text('Failed to ask for approval')));
-  //   }
-  // }
+        setState(() {}); // Refresh the UI
+
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Split request rejected')));
+      } catch (e) {
+        print('Failed to reject split request: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error rejecting split request')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Split Requests'),
+        backgroundColor: Colors.teal,
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Received requests
-            ListView(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              children: _receivedRequests.map((request) {
-                return FutureBuilder<String?>(
-                  future: _getUserNameById(request['from']),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return ListTile(
-                        title: Text('Loading...'),
-                      );
-                    } else if (snapshot.hasError) {
-                      return ListTile(
-                        title: Text('Error loading sender'),
-                      );
-                    }
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator()) // Show loading indicator while fetching data
+          :_receivedRequests.isEmpty
+          ? Center(child: Text('No split request receive', style: TextStyle(fontSize: 18, color: Colors.grey)))
+          :  ListView.builder(
+        itemCount: _receivedRequests.length,
+        itemBuilder: (context, index) {
+          final request = _receivedRequests[index];
+          final fromUsername = _getUserNameById(request['from']);
+          final amount = request['amount'].toStringAsFixed(2);
+          final status = request['status'];
 
-                    final senderName = snapshot.data ?? 'Unknown';
-                    return ListTile(
-  title: Text('From: $senderName'),
-  subtitle: Text('Amount: \$${request['amount']}'),
-  trailing: Builder(
-    builder: (context) {
-      if (request['status'] == 'pending') {
-        return ElevatedButton(
-          onPressed: () => _approveRequest(request.id),
-          child: Text('Ask Approval'),
-        );
-      } else {
-        return SizedBox.shrink(); // Return an empty widget if condition is not met
-      }
-    },
-  ),
-);
-
-                  },
-                );
-              }).toList(),
+          return Card(
+            child: ListTile(
+              title: FutureBuilder<String?>(
+                future: _getUserNameById(request['from']),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Text('Loading...'); // Display a loading indicator while the username is being fetched
+                  } else if (snapshot.hasError) {
+                    return Text('Error fetching name'); // Handle error
+                  } else {
+                    final fromUsername = snapshot.data ?? 'Unknown'; // Fallback in case the username is null
+                    return Text('From: $fromUsername');
+                  }
+                },
+              ),
+              subtitle: Text('Amount: \$${amount}\nStatus: $status'),
+              trailing: status == 'pending'
+                  ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.check, color: Colors.green),
+                    onPressed: () => _approveRequest(request.id),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.clear, color: Colors.red),
+                    onPressed: () => _rejectRequest(request.id),
+                  ),
+                ],
+              )
+                  : Text(
+                status,
+                style: TextStyle(
+                  color: status == 'approved'
+                      ? Colors.green
+                      : Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
-            // Sent requests
-            // ListView(
-            //   shrinkWrap: true,
-            //   physics: NeverScrollableScrollPhysics(),
-            //   children: _sentRequests.map((request) {
-            //     final data = request.data() as Map<String, dynamic>?;
-
-            //     return FutureBuilder<String?>(
-            //       future: _getUserNameById(request['to']),
-            //       builder: (context, snapshot) {
-            //         if (snapshot.connectionState == ConnectionState.waiting) {
-            //           return ListTile(
-            //             title: Text('Loading...'),
-            //           );
-            //         } else if (snapshot.hasError) {
-            //           return ListTile(
-            //             title: Text('Error loading recipient'),
-            //           );
-            //         }
-
-            //         final recipientName = snapshot.data ?? 'Unknown';
-            //         bool approvalRequested = data?['approvalRequested'] ?? false;
-
-            //         return ListTile(
-            //           title: Text('To: $recipientName'),
-            //           subtitle: Text('Amount: \$${request['amount']}'),
-            //           trailing: Column(
-            //             crossAxisAlignment: CrossAxisAlignment.start,
-            //             children: [
-            //               Text('Status: ${request['status']}'),
-            //               if (request['status'] == 'pending' && !approvalRequested)
-            //                 ElevatedButton(
-            //                   onPressed: () => _askForApproval(request.id),
-            //                   child: Text('Ask for Approval'),
-            //                 ),
-            //               if (request['status'] == 'pending')
-            //                 ElevatedButton(
-            //                   onPressed: () => _cancelRequest(request.id),
-            //                   child: Text('Cancel'),
-            //                 ),
-            //             ],
-            //           ),
-            //         );
-            //       },
-            //     );
-            //   }).toList(),
-            // ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
